@@ -1,16 +1,20 @@
+from collections import OrderedDict
+from contextlib import contextmanager
 from copy import deepcopy as dcp
 from functools import reduce, partial
 from pprint import pprint
-from typing import List, Tuple, Dict, Union
+from typing import List, Tuple, Dict, Union, Optional
 
 from ._merge_checker import merge_checker as _merge_checker
-from .utils import dictionary_merge_by_hierachy
+from .dictionary_utils import dictionary_merge_by_hierachy
 from .yaml_parser import yamlArgParser
-from ..utils import logger
+from ..logger import logger
+from ..types import typePath
 from ..utils.io import path2Path, yaml_load
-from ..utils.types import typePath
 
-__all__ = ["ConfigManger"]
+__all__ = ["ConfigManger", "get_config"]
+
+__config_dictionary__: OrderedDict = OrderedDict()
 
 
 class ConfigManger:
@@ -27,7 +31,7 @@ class ConfigManger:
         self._base_config, self._optional_config_list = self.load_yaml(verbose=False)
 
         self._parsed_args_merge_check = self.merge_check(strict=strict)
-        from .utils import remove_dictionary_callback
+        from .dictionary_utils import remove_dictionary_callback
         self._merged_config = reduce(
             partial(dictionary_merge_by_hierachy, deepcopy=True, hook_after_merge=remove_dictionary_callback),
             [self._base_config, *self._optional_config_list, self._parsed_args]
@@ -40,9 +44,9 @@ class ConfigManger:
 
     @staticmethod
     def _load_yaml(config_path: typePath, verbose=False):
-        config_path = path2Path(config_path)
-        assert config_path.is_file(), config_path
-        return yaml_load(config_path, verbose=verbose)
+        config_path_ = path2Path(config_path)
+        assert config_path_.is_file(), config_path
+        return yaml_load(config_path_, verbose=verbose)
 
     def load_yaml(self, verbose=False) -> Tuple[Dict, List[Dict]]:
         base_config = {}
@@ -64,6 +68,14 @@ class ConfigManger:
             if strict:
                 logger.exception(e)
                 raise e
+
+    @contextmanager
+    def __call__(self, config=None, scope="base"):
+        assert scope not in __config_dictionary__, scope
+        config = self.config if config is None else config
+        __config_dictionary__[scope] = config
+        yield config
+        del __config_dictionary__[scope]
 
     @property
     def base_config(self):
@@ -107,8 +119,14 @@ class ConfigManger:
 
     @property
     def base_path(self) -> str:
-        return self._base_path
+        return str(self._base_path)
 
     @property
-    def optional_path(self) -> List[str]:
-        return self._optional_paths
+    def optional_paths(self) -> Optional[List[str]]:
+        if self._optional_paths:
+            return [str(x) for x in self._optional_paths]
+        return None
+
+
+def get_config(scope):
+    return __config_dictionary__[scope]

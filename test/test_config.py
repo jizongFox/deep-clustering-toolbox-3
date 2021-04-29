@@ -4,7 +4,7 @@ from pprint import pprint
 from unittest import TestCase
 
 from deepclustering3.config.config_manager import ConfigManger
-from deepclustering3.config.utils import extract_subdictionary_from_large
+from deepclustering3.config.dictionary_utils import extract_dictionary_from_large
 from deepclustering3.utils.io import yaml_write
 
 
@@ -46,7 +46,7 @@ class TestConfigParser(TestCase):
 
     def test_extract(self):
         pprint(self.dictionary1)
-        pprint(extract_subdictionary_from_large(self.dictionary1, {"a": None, "d": {"e": {"e1": None}}}))
+        pprint(extract_dictionary_from_large(self.dictionary1, {"a": None, "d": {"e": {"e1": None}}}))
 
     def tearDown(self):
         super(TestConfigParser, self).tearDown()

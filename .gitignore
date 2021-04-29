@@ -1,2 +1,6 @@
 .idea
 *zz*
+demo/data/
+*.egg-info/
+__pycache__/
+test/data

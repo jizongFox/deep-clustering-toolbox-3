@@ -1,0 +1,16 @@
+Optim:
+  name: RAdam
+  lr: 0.00001
+  weight_decay: 0.000001
+Scheduler:
+  warmup_max: 10
+  multiplier: 40
+Trainer:
+  save_dir: 123
+  max_epoch: 12
+  num_batches: 20
+  resume_from: null
+
+
+
+

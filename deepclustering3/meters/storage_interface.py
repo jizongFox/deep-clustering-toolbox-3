@@ -1,113 +1,83 @@
 import functools
 from abc import ABCMeta
 from collections import defaultdict
-from typing import DefaultDict, Callable, List, Dict
+from typing import List, Dict
 
 import pandas as pd
 from termcolor import colored
 
-from deepclustering2.meters2.meter_interface import EpochResultDict
-from deepclustering2.utils import path2Path
-from .historicalContainer import HistoricalContainer
-from .utils import rename_df_columns
+from deepclustering3.types import typePath
+from deepclustering3.utils.io import path2Path
+from .utils import HistoricalContainer, rename_df_columns
 
 __all__ = ["Storage"]
 
 
-class StorageIncomeDict:
-    def __init__(self, **kwargs) -> None:
-        for k, v in kwargs.items():
-            setattr(self, f"{k}", v)
-
-    def __repr__(self):
-        string_info = ""
-        for k, v in self.__dict__.items():
-            string_info += colored(f"{k}:\n", "red")
-            string_info += f"{v}"
-        return string_info
-
-
-class _IOMixin:
-    _storage: DefaultDict[str, HistoricalContainer]
-    summary: Callable[[], pd.DataFrame]
-
-    def state_dict(self):
-        return self._storage
-
-    def load_state_dict(self, state_dict):
-        self._storage = state_dict
-        print("loading from checkpoint:")
-        print(colored(self.summary(), "green"))
-
-    def to_csv(self, path, name="storage.csv"):
-        path = path2Path(path)
-        path.mkdir(exist_ok=True, parents=True)
-        self.summary().to_csv(path / name)
-
-
-class Storage(_IOMixin, metaclass=ABCMeta):
-    def __init__(self, csv_save_dir=None, csv_name="storage.csv") -> None:
+class Storage(metaclass=ABCMeta):
+    def __init__(self, save_dir: typePath, csv_name="storage.csv") -> None:
         super().__init__()
-        self._storage = defaultdict(HistoricalContainer)
-        self._csv_save_dir = csv_save_dir
+        self.__storage = defaultdict(HistoricalContainer)
         self._csv_name = csv_name
+        self._save_dir: str = str(save_dir)
 
     def __enter__(self):
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
-        pass
+        self.to_csv()
 
     def put(
         self, name: str, value: Dict[str, float], epoch=None, prefix="", postfix=""
     ):
-        self._storage[prefix + name + postfix].add(value, epoch)
+        self.__storage[prefix + name + postfix].add(value, epoch)
 
-    def put_all(
-        self, result_name: str, epoch_result: EpochResultDict = None, epoch=None
+    def put_group(
+        self, group_name: str, epoch_result: Dict, epoch=None, sep="/",
     ):
-        assert isinstance(result_name, str), result_name
+        assert isinstance(group_name, str), group_name
         if epoch_result:
             for k, v in epoch_result.items():
-                self.put(result_name + "_" + k, v, epoch)
+                self.put(group_name + sep + k, v, epoch)
 
-    def put_from_dict(self, income_dict: StorageIncomeDict, epoch: int = None):
-        for k, v in income_dict.__dict__.items():
-            self.put_all(k, v, epoch)
-
-        if self._csv_save_dir:
-            self.to_csv(self._csv_save_dir, name=self._csv_name)
+    def add_from_meter_interface(self, *, epoch: int, **kwargs):
+        for k, iterator in kwargs.items():
+            for g, group_result in iterator.items():
+                self.put_group(group_name=k + "/" + g, epoch_result=group_result, epoch=epoch)
 
     def get(self, name, epoch=None):
-        assert name in self._storage, name
+        assert name in self.__storage, name
         if epoch is None:
-            return self._storage[name]
-        return self._storage[name][epoch]
+            return self.__storage[name]
+        return self.__storage[name][epoch]
 
     def summary(self) -> pd.DataFrame:
-        """
-        summary on the list of sub summarys, merging them together.
-        :return:
-        """
-        try:
-            list_of_summary = [
-                rename_df_columns(v.summary(), k) for k, v in self._storage.items()
-            ]
-            # merge the list
+        list_of_summary = [
+            rename_df_columns(v.summary(), k, "/") for k, v in self.__storage.items()
+        ]
+        summary = []
+        if len(list_of_summary) > 0:
             summary = functools.reduce(
                 lambda x, y: pd.merge(x, y, left_index=True, right_index=True),
                 list_of_summary,
             )
-            return pd.DataFrame(summary)
-        except TypeError:
-            return pd.DataFrame()
+        return pd.DataFrame(summary)
 
     @property
-    def meter_names(self, sorted=False) -> List[str]:
-        if sorted:
-            return sorted(self._storage.keys())
-        return list(self._storage.keys())
+    def meter_names(self) -> List[str]:
+        return list(self.__storage.keys())
 
     @property
     def storage(self):
-        return self._storage
+        return self.__storage
+
+    def state_dict(self):
+        return self.__storage
+
+    def load_state_dict(self, state_dict):
+        self.__storage = state_dict
+        print(colored(self.summary(), "green"))
+
+    def to_csv(self):
+        path = path2Path(self._save_dir)
+        path.mkdir(exist_ok=True, parents=True)
+        self.summary().to_csv(path / self._csv_name)

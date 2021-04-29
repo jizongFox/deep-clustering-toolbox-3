@@ -4,7 +4,7 @@ from typing import Union, Any, Dict
 
 import yaml
 
-from .types import typePath
+from ..types import typePath
 
 
 def path2Path(path: typePath) -> Path:

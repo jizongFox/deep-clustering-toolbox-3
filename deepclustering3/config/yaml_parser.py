@@ -1,14 +1,13 @@
-from copy import deepcopy
-
-__all__ = ["yamlArgParser", "str2bool"]
-
 import argparse
+from copy import deepcopy
 from functools import reduce
 from typing import List, Dict, Any, Tuple, Optional
 
 import yaml
 
-from .utils import dictionary_merge_by_hierachy
+from .dictionary_utils import dictionary_merge_by_hierachy
+
+__all__ = ["yamlArgParser", "str2bool"]
 
 dType = Dict[str, Any]
 
