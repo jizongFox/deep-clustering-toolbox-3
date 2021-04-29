@@ -8,7 +8,7 @@ from torchvision.transforms import Compose, RandomCrop, ColorJitter, Resize, ToT
 
 from deepclustering3.config import ConfigManger
 from deepclustering3.data.sampler import InfiniteRandomSampler
-from demo.trainers import Trainer
+from demo.trainers import demoTrainer
 
 cur_folder = os.path.abspath(os.path.dirname(__file__))
 config_path = f"{cur_folder}/config.yaml"
@@ -42,9 +42,16 @@ with config_parser(scope="base") as config:
     model.conv1 = nn.Conv2d(1, 64, kernel_size=(7, 7), stride=(2, 2), padding=(3, 3), bias=False)
     model.fc = nn.Linear(512, 10)
     resume_from = config["Trainer"].pop("resume_from", None)
-    trainer = Trainer(model=model, criterion=nn.CrossEntropyLoss(), tra_loader=iter(train_loader),
-                      val_loader=val_loader, **config["Trainer"])
+    trainer = demoTrainer(model=model, criterion=nn.CrossEntropyLoss(), tra_loader=iter(train_loader),
+                          val_loader=val_loader, **config["Trainer"])
+
+    from deepclustering3.epocher.hooks import EntropyMinHook
+
+    hook = EntropyMinHook(weight=1, hook_name="entmin")
+
+    trainer.register_hooks(hook)
     trainer.init(config=config)
+
     if resume_from:
         trainer.resume_from_path(resume_from)
     trainer.start_training()

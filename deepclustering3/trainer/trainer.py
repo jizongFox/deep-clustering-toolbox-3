@@ -1,4 +1,5 @@
 from abc import ABCMeta, abstractmethod
+from typing import Union, List
 
 import torch
 from torch import nn
@@ -9,6 +10,7 @@ from ._functional import _ToMixin
 from ._io import _IOMixin, _TensorWriterMixin, _StorageMixin
 from ..amp.ddp import _DDPMixin
 from ..epocher import Epocher
+from ..epocher.hooks import EpocherHook
 from ..types import criterionType as _criterion_type, dataIterType as _dataiter_type, genericLoaderType as _loader_type, \
     optimizerType as _optimizer_type
 
@@ -24,6 +26,7 @@ class Trainer(_DDPMixin, _StorageMixin, _TensorWriterMixin, _ToMixin, _IOMixin, 
         self._criterion = criterion
         self._tra_loader: _dataiter_type = tra_loader
         self._val_loader: _loader_type = val_loader
+        self.__hooks__ = nn.ModuleList()
         self.__initialized__ = False
 
     def init(self, *, config, **kwargs):
@@ -33,6 +36,12 @@ class Trainer(_DDPMixin, _StorageMixin, _TensorWriterMixin, _ToMixin, _IOMixin, 
         self._optimizer = self._init_optimizer()
         self._init_scheduler(self._optimizer)
         self.__initialized__ = True
+
+    def register_hooks(self, hooks: Union[EpocherHook, List[EpocherHook]]):
+        if self.__initialized__:
+            raise RuntimeError("`register_hook must be called before `init()``")
+        hooks = hooks if isinstance(hooks, (list, tuple)) else [hooks, ]
+        self.__hooks__.extend(hooks)
 
     @abstractmethod
     def _init(self, **kwargs):
@@ -44,6 +53,10 @@ class Trainer(_DDPMixin, _StorageMixin, _TensorWriterMixin, _ToMixin, _IOMixin, 
             params=filter(lambda p: p.requires_grad, self._model.parameters()),
             **{k: v for k, v in optim_params.items() if k != "name" and k != "pre_lr" and k != "ft_lr"}
         )
+        optimizer.add_param_group({"params": self.__hooks__.parameters(),
+                                   **{k: v for k, v in optim_params.items()
+                                      if k != "name" and k != "pre_lr" and k != "ft_lr"}
+                                   })
         return optimizer
 
     def _init_scheduler(self, optimizer):
@@ -90,6 +103,8 @@ class Trainer(_DDPMixin, _StorageMixin, _TensorWriterMixin, _ToMixin, _IOMixin, 
     def run_tra_epoch(self, **kwargs):
         epocher = self._create_tra_epoch(**kwargs)
         epocher = self._init_tra_epoch(epocher)
+        if len(self.__hooks__) > 0:
+            epocher.register_hooks(list(self.__hooks__))
         return self._run_tra_epoch(epocher)
 
     @staticmethod

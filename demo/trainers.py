@@ -3,13 +3,13 @@ import os
 from torch import nn
 
 from deepclustering3.epocher import Epocher
-from deepclustering3.trainer import Trainer as _Trainer
+from deepclustering3.trainer import Trainer
 from deepclustering3.types import criterionType as _criterion_type, \
     dataIterType as _dataiter_type, genericLoaderType as _loader_type
 from .epochers import TrainEpocher, EvalEpocher
 
 
-class Trainer(_Trainer):
+class demoTrainer(Trainer):
     RUN_PATH = f"{os.path.dirname(__file__)}/runs"
 
     def __init__(self, *, model: nn.Module, criterion: _criterion_type, tra_loader: _dataiter_type,

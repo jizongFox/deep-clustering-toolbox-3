@@ -1,7 +1,7 @@
 import weakref
 from abc import abstractmethod, ABCMeta
 from contextlib import contextmanager
-from typing import Union
+from typing import Union, List
 
 import torch
 from torch import nn
@@ -9,6 +9,8 @@ from torch import nn
 from deepclustering3.amp.ddp import _DDPMixin  # noqa
 from deepclustering3.meters.meter_interface import MeterInterface
 from deepclustering3.mytqdm.mytqdm import tqdm
+from .hooks import EpocherHook
+from ..meters.averagemeter import AverageValueListMeter
 
 
 class _Epocher(_DDPMixin, metaclass=ABCMeta):
@@ -34,6 +36,7 @@ class _Epocher(_DDPMixin, metaclass=ABCMeta):
 
     def init(self, **kwargs):
         self._init(**kwargs)
+        self.configure_meters(self.meters)
         self.__epocher_initialized__ = True
 
     @contextmanager
@@ -47,16 +50,15 @@ class _Epocher(_DDPMixin, metaclass=ABCMeta):
         self.indicator.close()
         self.indicator.print_result()
 
-
     @contextmanager
     def _register_meters(self):
         meters = self.meters
-        meters = self.configure_meters(meters)
         yield meters
         meters.join()
 
     @abstractmethod
     def configure_meters(self, meters: MeterInterface) -> MeterInterface:
+        meters.register_meter("lr", AverageValueListMeter())
         return meters
 
     @abstractmethod
@@ -97,3 +99,37 @@ class _Epocher(_DDPMixin, metaclass=ABCMeta):
         if not self.__bind_trainer_done__:
             raise RuntimeError(f"{self.__class__.__name__} should call `set_trainer` first")
         return self._trainer
+
+
+class _EpocherWithPlugin(_Epocher):
+    def __init__(self, **kwargs) -> None:
+        super().__init__(**kwargs)
+        self._hooks: List[EpocherHook] = []
+
+    def register_hooks(self, hooks: Union[EpocherHook, List[EpocherHook]]):
+        hooks = hooks if isinstance(hooks, (tuple, list)) else [hooks, ]
+        for h in hooks:
+            h.bind_epocher(self)
+        self._hooks.extend(hooks)
+
+    def hooks_before_epoch(self):
+        for h in self._hooks:
+            h.before_epoch()
+
+    def hooks_end_epoch(self):
+        for h in self._hooks:
+            h.end_epoch()
+
+    def hooks_before_update(self):
+        for h in self._hooks:
+            h.before_update()
+
+    def hooks_end_update(self):
+        for h in self._hooks:
+            h.end_update()
+
+    def _run(self, **kwargs):
+        self.hooks_before_epoch()
+        result = super(HookMixin, self)._run(**kwargs)  # noqa
+        self.hooks_end_epoch()
+        return result
